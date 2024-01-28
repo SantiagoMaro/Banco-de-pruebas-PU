@@ -1,0 +1,79 @@
+#include "HX711.h"
+#include <Wire.h>
+#include "FS.h"
+#include "SD.h"
+#include "SPI.h"
+
+#define SD_CS_PIN 5
+#define FILENAME "/Pruebademotor.txt"
+
+const int LOADCELL_DOUT_PIN = 2;
+const int LOADCELL_SCK_PIN = 16;
+const int pressureInput = 26;
+const float pressureZero = 409.6;
+const float pressureMax = 3686.4;
+const int pressuretransducermaxPSI = 1000;
+
+float pressureValue = 0;
+HX711 CeldaCarga;
+
+void setup() {
+  Serial.begin(9600);
+  CeldaCarga.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+  initializeSD();
+}
+
+void loop() {
+  // Leer valores de la celda de carga
+  long reading = CeldaCarga.read();
+  float result = 0.000040 * reading - 0.673906;
+
+  // Leer valor de presión
+  pressureValue = analogRead(pressureInput);
+  pressureValue = ((pressureValue - pressureZero) * pressuretransducermaxPSI) / (pressureMax - pressureZero);
+
+  // Marca temporal
+  unsigned long currentTime = millis();
+
+  // Imprimir mediciones
+  Serial.print("Time: ");
+  Serial.print(currentTime);
+  Serial.print(", HX711: ");
+  Serial.print(reading);
+  Serial.print(", Kilogramos: ");
+  Serial.print(result);
+  Serial.print(", PSI: ");
+  Serial.print(pressureValue, 1);
+  Serial.println();
+
+  // Escribir las lecturas en la tarjeta SD si está disponible
+  if (SD.begin(SD_CS_PIN)) {
+    writeSDData(currentTime, reading, result, pressureValue);
+  }
+}
+
+void initializeSD() {
+  Serial.println("Inicializando tarjeta SD...");
+  if (!SD.begin(SD_CS_PIN)) {
+    Serial.println("Error al inicializar la tarjeta SD. Los datos se guardarán cuando la tarjeta esté disponible.");
+  } else {
+    Serial.println("Tarjeta SD inicializada correctamente");
+  }
+}
+
+void writeSDData(unsigned long time, long hx711Reading, float kgResult, float psiValue) {
+  File dataFile = SD.open(FILENAME, FILE_APPEND);
+  if (dataFile) {
+    dataFile.print("Time: ");
+    dataFile.print(time); 
+    dataFile.print(", HX711: ");
+    dataFile.print(hx711Reading);
+    dataFile.print(", Kilogramos: ");
+    dataFile.print(kgResult);
+    dataFile.print(", PSI: ");
+    dataFile.println(psiValue, 1);
+    dataFile.close();
+  } else {
+    Serial.println("Error al abrir el archivo en la tarjeta SD");
+  }
+}
