@@ -6,9 +6,11 @@
 
 #define SD_CS_PIN 5
 #define FILENAME "/Pruebademotor.txt"
+#define HC12_RX_PIN 16
+#define HC12_TX_PIN 17
 
 const int LOADCELL_DOUT_PIN = 2;
-const int LOADCELL_SCK_PIN = 16;
+const int LOADCELL_SCK_PIN = 4;
 const int pressureInput = 26;
 const float pressureZero = 409.6;
 const float pressureMax = 3686.4;
@@ -19,36 +21,55 @@ HX711 CeldaCarga;
 
 void setup() {
   Serial.begin(9600);
+  Serial2.begin(9600, SERIAL_8N1, HC12_RX_PIN, HC12_TX_PIN);
   CeldaCarga.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
   initializeSD();
 }
 
 void loop() {
-  // Leer valores de la celda de carga
-  long reading = CeldaCarga.read();
-  float result = 0.000040 * reading - 0.673906;
+  for (int i = 0; i < 10; i++) {
+    // Leer valores de la celda de carga
+    long reading = CeldaCarga.read();
+    float result = (0.000040 * reading - 0.673906) - 0.6;
 
-  // Leer valor de presión
-  pressureValue = analogRead(pressureInput);
-  pressureValue = ((pressureValue - pressureZero) * pressuretransducermaxPSI) / (pressureMax - pressureZero);
+    // Leer valor de presión
+    pressureValue = analogRead(pressureInput);
+    pressureValue = ((pressureValue - pressureZero) * pressuretransducermaxPSI) / (pressureMax - pressureZero);
 
-  // Marca temporal
-  unsigned long currentTime = millis();
+    // Marca temporal
+    unsigned long currentTime = millis();
 
-  // Imprimir mediciones
-  Serial.print("Time: ");
-  Serial.print(currentTime);
-  Serial.print(", HX711: ");
-  Serial.print(reading);
-  Serial.print(", Kilogramos: ");
-  Serial.print(result);
-  Serial.print(", PSI: ");
-  Serial.print(pressureValue, 1);
-  Serial.println();
+    // Convertir el tiempo a segundos
+    float timeSeconds = (float)currentTime / 1000.0;
 
-  // Escribir las lecturas en la tarjeta SD si está disponible
-  if (SD.begin(SD_CS_PIN)) {
-    writeSDData(currentTime, reading, result, pressureValue);
+    // Imprimir mediciones en el puerto serie
+    Serial.print(timeSeconds, 2);
+    Serial.print(",");
+    Serial.print(result);
+    Serial.print(",");
+    Serial.print(pressureValue, 1);
+    Serial.print(",");
+    Serial.print(reading);
+    Serial.print(",");
+    Serial.println(analogRead(pressureInput));
+
+    // Escribir las lecturas en la tarjeta SD si está disponible
+    if (SD.begin(SD_CS_PIN)) {
+      writeSDData(currentTime, reading, result, pressureValue);
+    }
+
+    // Enviar las mediciones al HC-12
+    Serial2.print(timeSeconds, 2);
+    Serial2.print(",");
+    Serial2.print(result);
+    Serial2.print(",");
+    Serial2.print(pressureValue, 1);
+    Serial2.print(",");
+    Serial2.print(reading);
+    Serial2.print(",");
+    Serial2.println(analogRead(pressureInput));
+
+    delay(100);
   }
 }
 
@@ -64,14 +85,19 @@ void initializeSD() {
 void writeSDData(unsigned long time, long hx711Reading, float kgResult, float psiValue) {
   File dataFile = SD.open(FILENAME, FILE_APPEND);
   if (dataFile) {
-    dataFile.print("Time: ");
-    dataFile.print(time); 
-    dataFile.print(", HX711: ");
-    dataFile.print(hx711Reading);
-    dataFile.print(", Kilogramos: ");
+    // Convertir el tiempo a segundos
+    float timeSeconds = (float)time / 1000.0;
+
+    dataFile.print(timeSeconds, 2);
+    dataFile.print(",");
     dataFile.print(kgResult);
-    dataFile.print(", PSI: ");
-    dataFile.println(psiValue, 1);
+    dataFile.print(",");
+    dataFile.print(psiValue, 1);
+    dataFile.print(",");
+    dataFile.print(hx711Reading);
+    dataFile.print(",");
+    dataFile.println(analogRead(pressureInput));
+
     dataFile.close();
   } else {
     Serial.println("Error al abrir el archivo en la tarjeta SD");
